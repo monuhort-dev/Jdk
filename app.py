@@ -61,109 +61,62 @@ def _run_process(server_id, cmd, cwd, log_path, env):
                     lf.write(f'[{ts}] [STOP] Process exited\n')
 
 
-STDLIB_MODULES = {
-    'os','sys','re','json','time','datetime','math','random','string',
-    'pathlib','shutil','subprocess','threading','collections','itertools',
-    'functools','io','abc','copy','enum','typing','dataclasses','contextlib',
-    'logging','traceback','warnings','inspect','ast','dis','gc','weakref',
-    'struct','array','queue','heapq','bisect','hashlib','hmac','secrets',
-    'base64','urllib','http','socket','ssl','email','html','xml','csv',
-    'sqlite3','pickle','shelve','tempfile','glob','fnmatch','stat',
-    'platform','signal','atexit','builtins','types','operator',
-    'unittest','argparse','configparser','textwrap','pprint',
-    '__future__','_thread','concurrent','multiprocessing','asyncio',
-    'ctypes','decimal','fractions','statistics','calendar','locale',
-    'gettext','codecs','unicodedata','readline','rlcompleter',
-}
-
-def _extract_python_imports(file_path):
-    pkgs = set()
-    try:
-        src = Path(file_path).read_text(errors='replace')
-        for line in src.splitlines():
-            line = line.strip()
-            if line.startswith('import '):
-                for part in line[7:].split(','):
-                    pkg = part.strip().split('.')[0].split(' as ')[0].strip()
-                    if pkg:
-                        pkgs.add(pkg)
-            elif line.startswith('from '):
-                pkg = line[5:].split()[0].split('.')[0].strip()
-                if pkg:
-                    pkgs.add(pkg)
-    except Exception:
-        pass
-    return pkgs - STDLIB_MODULES
-
-
-def _pip_install(pkgs_or_req_file, cwd, log_path, is_req_file=False):
+def _pip_install_req(req_file, cwd, log_path):
+    """Install packages from a requirements.txt into .packages/."""
     pkg_dir = cwd / '.packages'
     pkg_dir.mkdir(exist_ok=True)
-
     uv  = shutil.which('uv')
     pip = shutil.which('pip3') or shutil.which('pip') or 'pip3'
-
-    if is_req_file:
-        cmd = ([uv, 'pip', 'install', '--target', str(pkg_dir), '-r', str(pkgs_or_req_file)]
-               if uv else [pip, 'install', '--target', str(pkg_dir), '-r', str(pkgs_or_req_file)])
-    else:
-        cmd = ([uv, 'pip', 'install', '--target', str(pkg_dir)] + list(pkgs_or_req_file)
-               if uv else [pip, 'install', '--target', str(pkg_dir)] + list(pkgs_or_req_file))
-
+    cmd = ([uv, 'pip', 'install', '--target', str(pkg_dir), '-r', str(req_file)]
+           if uv else [pip, 'install', '--target', str(pkg_dir), '-r', str(req_file)])
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(cwd))
     ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     with open(log_path, 'a') as lf:
         if result.returncode == 0:
-            lf.write(f'[{ts}] [INFO] Install OK\n')
+            lf.write(f'[{ts}] [INFO] requirements.txt installed OK\n')
         else:
             err = (result.stderr or result.stdout or '').strip()[:800]
-            lf.write(f'[{ts}] [ERROR] Install failed:\n{err}\n')
+            lf.write(f'[{ts}] [ERROR] requirements.txt install failed:\n{err}\n')
     return result.returncode == 0
 
 
-def _auto_install_python(server, cwd, log_path):
-    req_file = cwd / 'requirements.txt'
-    if req_file.exists():
-        try:
-            lines = req_file.read_text(errors='replace').splitlines()
-            reqs  = [l.strip() for l in lines if l.strip() and not l.strip().startswith('#')]
-            if reqs:
-                ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-                with open(log_path, 'a') as lf:
-                    lf.write(f'[{ts}] [INFO] Found requirements.txt ({len(reqs)} package(s)) - installing\n')
-                _pip_install(req_file, cwd, log_path, is_req_file=True)
-                return
-        except Exception as e:
-            ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-            with open(log_path, 'a') as lf:
-                lf.write(f'[{ts}] [ERROR] Could not read requirements.txt: {e}\n')
-
-    entry      = server.entry_file or 'main.py'
-    entry_path = cwd / entry
-    if not entry_path.exists():
-        return
-    pkgs = _extract_python_imports(entry_path)
-    if not pkgs:
-        return
-
-    pkg_dir = str(cwd / '.packages')
-    missing = []
-    for pkg in pkgs:
-        r = subprocess.run(
-            [shutil.which('python3') or 'python3', '-c', f'import {pkg}'],
-            capture_output=True,
-            env={**os.environ, 'PYTHONPATH': pkg_dir},
-            cwd=str(cwd),
-        )
-        if r.returncode != 0:
-            missing.append(pkg)
-    if not missing:
-        return
-
+def _pip_install_packages(packages, cwd, log_path):
+    """Install an explicit list of packages into .packages/ (from console pip install)."""
+    pkg_dir = cwd / '.packages'
+    pkg_dir.mkdir(exist_ok=True)
+    uv  = shutil.which('uv')
+    pip = shutil.which('pip3') or shutil.which('pip') or 'pip3'
+    cmd = ([uv, 'pip', 'install', '--target', str(pkg_dir)] + packages
+           if uv else [pip, 'install', '--target', str(pkg_dir)] + packages)
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(cwd))
     ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     with open(log_path, 'a') as lf:
-        lf.write(f'[{ts}] [INFO] Auto-installing: {", ".join(missing)}\n')
-    _pip_install(missing, cwd, log_path)
+        if result.returncode == 0:
+            lf.write(f'[{ts}] [INFO] pip install OK: {" ".join(packages)}\n')
+        else:
+            err = (result.stderr or result.stdout or '').strip()[:800]
+            lf.write(f'[{ts}] [ERROR] pip install failed:\n{err}\n')
+    return result.returncode == 0
+
+
+def _install_from_requirements(server, cwd, log_path):
+    """Install from requirements.txt if it exists. Called at bot startup."""
+    req_file = cwd / 'requirements.txt'
+    if not req_file.exists():
+        return
+    try:
+        lines = req_file.read_text(errors='replace').splitlines()
+        reqs  = [l.strip() for l in lines if l.strip() and not l.strip().startswith('#')]
+        if not reqs:
+            return
+        ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        with open(log_path, 'a') as lf:
+            lf.write(f'[{ts}] [INFO] Found requirements.txt ({len(reqs)} package(s)) - installing\n')
+        _pip_install_req(req_file, cwd, log_path)
+    except Exception as e:
+        ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        with open(log_path, 'a') as lf:
+            lf.write(f'[{ts}] [ERROR] Could not read requirements.txt: {e}\n')
 
 
 def _auto_install_node(server, cwd, log_path):
@@ -216,9 +169,7 @@ def start_server_process(server):
 
     server.append_log('START', f'Launching (sandboxed): {" ".join(cmd)}')
     if server.bot_type == 'python':
-        _auto_install_python(server, cwd, log_path)
-    else:
-        _auto_install_node(server, cwd, log_path)
+        _install_from_requirements(server, cwd, log_path)
 
     t = threading.Thread(
         target=_run_process,
@@ -676,17 +627,41 @@ def server_stdin(server_id):
     if not owns_server(server):
         abort(403)
     cmd = request.form.get('cmd', '').strip()[:512]
-    if cmd:
-        proc = running_processes.get(server_id)
-        if proc and proc.stdin:
-            try:
-                proc.stdin.write(cmd + '\n')
-                proc.stdin.flush()
-                server.append_log('STDIN', f'$ {cmd}')
-            except Exception:
-                server.append_log('ERROR', f'Could not write to stdin: {cmd}')
-        else:
-            server.append_log('INFO', f'(console) $ {cmd}')
+    if not cmd:
+        return ('', 204)
+
+    server.append_log('STDIN', f'$ {cmd}')
+
+    # Intercept pip install / pip3 install and run them for real
+    import shlex
+    tokens = shlex.split(cmd)
+    is_pip = (len(tokens) >= 3
+              and tokens[0] in ('pip', 'pip3', 'python3 -m pip')
+              and tokens[1] == 'install')
+    # also handle "python3 -m pip install ..."
+    if not is_pip and len(tokens) >= 4 and tokens[:3] == ['python3', '-m', 'pip'] and tokens[3] == 'install':
+        is_pip = True
+        tokens = ['pip', 'install'] + tokens[4:]
+
+    if is_pip:
+        packages = [t for t in tokens[2:] if not t.startswith('-')]
+        if packages:
+            cwd      = server.upload_dir
+            log_path = server.log_path
+            def _run_pip():
+                with app.app_context():
+                    _pip_install_packages(packages, cwd, log_path)
+            threading.Thread(target=_run_pip, daemon=True).start()
+        return ('', 204)
+
+    # Not a pip command — pass to the bot's stdin if it's running
+    proc = running_processes.get(server_id)
+    if proc and proc.stdin:
+        try:
+            proc.stdin.write(cmd + '\n')
+            proc.stdin.flush()
+        except Exception:
+            server.append_log('ERROR', f'Could not write to stdin')
     return ('', 204)
 
 
