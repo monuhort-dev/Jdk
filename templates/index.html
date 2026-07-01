@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BotHost — Simple Bot Hosting</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="landing">
+  <nav class="landing-nav">
+    <div class="landing-logo">Bot<span>Host</span></div>
+    <div class="landing-nav-links">
+      <a href="{{ url_for('login') }}" class="btn btn-ghost btn-sm">Sign in</a>
+      <a href="{{ url_for('register') }}" class="btn btn-primary btn-sm">Get started</a>
+    </div>
+  </nav>
+
+  <div class="hero">
+    <div class="hero-badge">⚡ Free tier · 1 server included</div>
+    <h1>Host your <span>Python & JS</span> bots with ease</h1>
+    <p>Simple, minimal bot hosting. Create an account, get your free server slot instantly, and start running your bots in seconds.</p>
+    <div class="hero-actions">
+      <a href="{{ url_for('register') }}" class="btn btn-primary">Create free account →</a>
+      <a href="{{ url_for('login') }}" class="btn btn-ghost">Sign in</a>
+    </div>
+  </div>
+
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">🐍</div>
+      <h3>Python Bots</h3>
+      <p>Host Discord, Telegram, or any Python bot with full dependency support.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">⚡</div>
+      <h3>JavaScript Bots</h3>
+      <p>Node.js bots supported out of the box. npm packages included.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🔧</div>
+      <h3>Easy Management</h3>
+      <p>Start, stop, and configure your bot servers from a clean dashboard.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🛡️</div>
+      <h3>Instant Setup</h3>
+      <p>Register and your server is ready immediately. No waiting, no credit card.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

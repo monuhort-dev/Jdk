@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ code }} — BotHost</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-box" style="text-align:center">
+    <div style="font-size:48px; font-family:var(--mono); font-weight:800; color:var(--text-muted); margin-bottom:12px">{{ code }}</div>
+    <h2 style="margin-bottom:8px">{{ message }}</h2>
+    <p style="color:var(--text-muted); font-size:13px; margin-bottom:24px">Something went wrong.</p>
+    <a href="{{ url_for('index') }}" class="btn btn-primary">← Go home</a>
+  </div>
+</div>
+</body>
+</html>

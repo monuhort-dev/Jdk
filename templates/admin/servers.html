@@ -1,0 +1,75 @@
+{% from 'icons.html' import icon_bot_type, icon_folder_open, icon_clipboard, icon_settings %}
+{% extends "base.html" %}
+{% block title %}Manage Servers{% endblock %}
+{% block page_title %}Manage Servers{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>All Servers</h2>
+  <p>{{ servers|length }} total servers across all users. Full admin access to every server's files and logs.</p>
+</div>
+
+{% for server in servers %}
+<div class="server-card" style="flex-direction:column;align-items:stretch;gap:0;padding:0;overflow:hidden;margin-bottom:10px">
+  <!-- Top row -->
+  <div style="display:flex;align-items:center;gap:14px;padding:14px 18px">
+    <div class="server-icon {{ server.bot_type }}" style="width:36px;height:36px;font-size:16px;display:flex;align-items:center;justify-content:center;color:var(--text-muted)">
+      {{ icon_bot_type(server.bot_type, 18) }}
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:600;font-size:13px;font-family:var(--mono)">{{ server.name }}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:2px;display:flex;gap:8px;align-items:center">
+        <span class="badge {{ 'badge-running' if server.status == 'running' else 'badge-stopped' }}">{{ server.status }}</span>
+        <span class="badge badge-type">{{ server.bot_type }}</span>
+        <span>Owner: <strong style="color:var(--text)">{{ server.owner.username }}</strong></span>
+        <span>#{{ server.id }}</span>
+        {% if server.entry_file %}<span style="font-family:var(--mono);font-size:11px">{{ server.entry_file }}</span>{% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-shrink:0">
+      <form class="inline-form" method="POST" action="{{ url_for('admin_toggle_server', server_id=server.id) }}">
+        <button type="submit" class="btn btn-sm {{ 'btn-danger' if server.status == 'running' else 'btn-success' }}">
+          {{ '■ Stop' if server.status == 'running' else '▶ Start' }}
+        </button>
+      </form>
+      <form class="inline-form" method="POST" action="{{ url_for('admin_delete_server', server_id=server.id) }}"
+            onsubmit="return confirm('Delete server {{ server.name }}?')">
+        <button type="submit" class="btn btn-danger btn-sm">✕ Delete</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Access bar -->
+  <div style="display:flex;border-top:1px solid var(--border);background:var(--surface2)">
+    <a href="{{ url_for('files', server_id=server.id) }}"
+       style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:9px;font-size:12px;font-weight:500;color:var(--text-muted);border-right:1px solid var(--border);text-decoration:none;transition:all .15s"
+       onmouseover="this.style.background='var(--surface)';this.style.color='var(--text)'"
+       onmouseout="this.style.background='';this.style.color='var(--text-muted)'">
+      {{ icon_folder_open(13) }} Files <span style="font-family:var(--mono);font-size:10px;opacity:.5">({{ server.disk_used_mb }} MB)</span>
+    </a>
+    <a href="{{ url_for('server_logs', server_id=server.id) }}"
+       style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:9px;font-size:12px;font-weight:500;color:var(--text-muted);border-right:1px solid var(--border);text-decoration:none;transition:all .15s"
+       onmouseover="this.style.background='var(--surface)';this.style.color='var(--text)'"
+       onmouseout="this.style.background='';this.style.color='var(--text-muted)'">
+      {{ icon_clipboard(13) }} Logs
+    </a>
+    <a href="{{ url_for('server_config', server_id=server.id) }}"
+       style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:9px;font-size:12px;font-weight:500;color:var(--text-muted);text-decoration:none;transition:all .15s"
+       onmouseover="this.style.background='var(--surface)';this.style.color='var(--text)'"
+       onmouseout="this.style.background='';this.style.color='var(--text-muted)'">
+      {{ icon_settings(13) }} Config
+    </a>
+  </div>
+</div>
+{% endfor %}
+
+{% if not servers %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">◈</div>
+    <h3>No servers yet</h3>
+    <p>Servers appear here once users register.</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Admin Overview{% endblock %}
+{% block page_title %}Admin Overview{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Admin Panel</h2>
+  <p>Full control over users and servers.</p>
+</div>
+
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-label">Total Users</div>
+    <div class="stat-value accent">{{ stats.total_users }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Servers</div>
+    <div class="stat-value">{{ stats.total_servers }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Running</div>
+    <div class="stat-value green">{{ stats.running_servers }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Stopped</div>
+    <div class="stat-value" style="color:var(--text-muted)">{{ stats.stopped_servers }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Python Bots</div>
+    <div class="stat-value" style="color:var(--green)">{{ stats.python_servers }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">JS Bots</div>
+    <div class="stat-value" style="color:var(--yellow)">{{ stats.js_servers }}</div>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Recent Users</div>
+    <a href="{{ url_for('admin_users') }}" class="btn btn-ghost btn-sm">View all</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Servers</th>
+          <th>Joined</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in recent_users %}
+        <tr>
+          <td>
+            <div>{{ user.username }}</div>
+            <div style="color:var(--text-muted); font-size:11px">{{ user.email }}</div>
+          </td>
+          <td>{{ user.servers|length }}</td>
+          <td>{{ user.created_at.strftime('%b %d') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Recent Servers</div>
+    <a href="{{ url_for('admin_servers') }}" class="btn btn-ghost btn-sm">View all</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Server</th>
+          <th>Owner</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for server in recent_servers %}
+        <tr>
+          <td>
+            <div style="font-family:var(--mono)">{{ server.name }}</div>
+            <div style="color:var(--text-muted); font-size:11px">{{ server.bot_type }}</div>
+          </td>
+          <td class="regular">{{ server.owner.username }}</td>
+          <td>
+            <span class="badge {{ 'badge-running' if server.status == 'running' else 'badge-stopped' }}">{{ server.status }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% from 'icons.html' import icon_bot_type, icon_settings %}
+{% extends "base.html" %}
+{% block title %}My Servers{% endblock %}
+{% block page_title %}My Servers{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; align-items:flex-start; justify-content:space-between">
+  <div>
+    <h2>My Servers</h2>
+    <p>All your bot server instances.</p>
+  </div>
+</div>
+
+{% if servers %}
+  {% for server in servers %}
+  <div class="server-card">
+    <div class="server-icon {{ server.bot_type }}" style="display:flex;align-items:center;justify-content:center;color:var(--text-muted)">
+      {{ icon_bot_type(server.bot_type, 20) }}
+    </div>
+    <div class="server-info">
+      <div class="server-name">{{ server.name }}</div>
+      <div class="server-meta">
+        <span class="badge {{ 'badge-running' if server.status == 'running' else 'badge-stopped' }}">{{ server.status }}</span>
+        <span class="badge badge-type">{{ server.bot_type }}</span>
+        <span>ID: #{{ server.id }}</span>
+      </div>
+      {% if server.entry_file %}
+        <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-family:var(--mono)">Entry: {{ server.entry_file }}</div>
+      {% endif %}
+    </div>
+    <div class="server-actions">
+      <a href="{{ url_for('server_config', server_id=server.id) }}" class="btn btn-ghost btn-sm" style="display:flex;align-items:center;gap:5px">
+        {{ icon_settings(13) }} Config
+      </a>
+      <form class="inline-form" method="POST" action="{{ url_for('server_toggle', server_id=server.id) }}">
+        {% if server.status == 'running' %}
+          <button type="submit" class="btn btn-danger btn-sm">■ Stop</button>
+        {% else %}
+          <button type="submit" class="btn btn-success btn-sm">▶ Start</button>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="card">
+    <div class="empty-state">
+      <div class="empty-icon">◈</div>
+      <h3>No servers</h3>
+      <p>You don't have any server slots yet.</p>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

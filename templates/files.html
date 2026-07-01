@@ -1,0 +1,303 @@
+{% from 'icons.html' import icon_monitor, icon_folder_open, icon_settings, icon_trash, icon_package, icon_file_text, icon_file, icon_folder, icon_upload_cloud %}
+{% extends "base.html" %}
+{% block title %}Files — {{ server.name }}{% endblock %}
+{% block page_title %}{{ server.name }}{% endblock %}
+
+{% block content %}
+
+<!-- Workspace tab bar -->
+<div style="display:flex;gap:2px;margin-bottom:20px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:4px;width:fit-content;max-width:100%">
+  <a href="{{ url_for('server_console', server_id=server.id) }}"
+     style="padding:6px 14px;border-radius:5px;font-size:13px;font-weight:500;text-decoration:none;color:var(--text-muted);display:flex;align-items:center;gap:5px">
+    {{ icon_monitor(13) }} Console
+  </a>
+  <a href="{{ url_for('files', server_id=server.id) }}"
+     style="padding:6px 14px;border-radius:5px;font-size:13px;font-weight:500;text-decoration:none;background:var(--surface2);color:var(--text);border:1px solid var(--border);display:flex;align-items:center;gap:5px">
+    {{ icon_folder_open(13) }} Files
+  </a>
+  <a href="{{ url_for('server_config', server_id=server.id) }}"
+     style="padding:6px 14px;border-radius:5px;font-size:13px;font-weight:500;text-decoration:none;color:var(--text-muted);display:flex;align-items:center;gap:5px">
+    {{ icon_settings(13) }} Config
+  </a>
+</div>
+
+<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+  <div>
+    <h2>Files</h2>
+    <p>Upload, edit, rename and manage your bot files.</p>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <button id="del-selected-btn" onclick="deleteSelected()" class="btn btn-danger btn-sm" style="display:none;align-items:center;gap:5px">
+      {{ icon_trash(13) }} Delete Selected (<span id="sel-count">0</span>)
+    </button>
+    <button onclick="openNewFolder()" class="btn btn-ghost btn-sm" style="display:flex;align-items:center;gap:5px">
+      {{ icon_folder(13) }} New Folder
+    </button>
+    <label for="upload-input" class="btn btn-primary btn-sm" style="cursor:pointer">↑ Upload</label>
+  </div>
+</div>
+
+<!-- Hidden upload form (posts current_path so uploads land in the current folder) -->
+<form id="upload-form" method="POST" action="{{ url_for('file_upload', server_id=server.id) }}" enctype="multipart/form-data" style="display:none">
+  <input id="upload-input" type="file" name="files" multiple onchange="document.getElementById('upload-form').submit()">
+  <input type="hidden" name="upload_path" value="{{ current_path }}">
+</form>
+
+<!-- Hidden bulk delete form (also tracks current_path for redirect-back) -->
+<form id="bulk-delete-form" method="POST" action="{{ url_for('file_delete_bulk', server_id=server.id) }}">
+  <input type="hidden" name="current_path" value="{{ current_path }}">
+  <div id="bulk-hidden-inputs"></div>
+</form>
+
+<!-- Breadcrumb navigation -->
+<nav style="display:flex;align-items:center;gap:4px;font-size:13px;font-family:var(--mono);margin-bottom:12px;flex-wrap:wrap">
+  <a href="{{ url_for('files', server_id=server.id) }}"
+     style="color:var(--accent);text-decoration:none">root</a>
+  {% for crumb in breadcrumbs %}
+    <span style="color:var(--text-muted)">/</span>
+    {% if loop.last %}
+      <span style="color:var(--text)">{{ crumb.name }}</span>
+    {% else %}
+      <a href="{{ url_for('files', server_id=server.id) }}?path={{ crumb.path }}"
+         style="color:var(--accent);text-decoration:none">{{ crumb.name }}</a>
+    {% endif %}
+  {% endfor %}
+</nav>
+
+<!-- Disk usage bar -->
+<div class="card" style="margin-bottom:16px;padding:14px 20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+    <span style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Disk Usage</span>
+    <span style="font-size:12px;font-family:var(--mono);color:var(--text)">
+      {{ disk_used }} MB / {{ disk_limit }}{% if disk_limit != 'inf' %} MB{% endif %}
+    </span>
+  </div>
+  {% if disk_limit != 'inf' %}
+    {% set pct = [(disk_used / disk_limit * 100), 100] | min %}
+    <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+      <div style="height:100%;width:{{ pct }}%;background:{% if pct > 85 %}var(--red){% elif pct > 60 %}var(--yellow){% else %}var(--accent){% endif %};border-radius:2px;transition:width .3s"></div>
+    </div>
+  {% else %}
+    <div style="height:4px;background:var(--border);border-radius:2px">
+      <div style="height:100%;width:10%;background:var(--accent);border-radius:2px"></div>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Drag-drop zone -->
+<div id="drop-zone" class="drop-zone" ondragover="event.preventDefault();this.classList.add('drag-over')"
+     ondragleave="this.classList.remove('drag-over')"
+     ondrop="handleDrop(event)"
+     style="display:flex;align-items:center;justify-content:center;gap:8px">
+  {{ icon_upload_cloud(16) }} <span>Drop files here to upload{% if current_path %} into <code>{{ current_path }}</code>{% endif %}</span>
+</div>
+
+<!-- File table -->
+<div class="card" style="padding:0;overflow:hidden;margin-top:12px">
+  {% if current_path %}
+  <!-- Back link to parent directory -->
+  <div style="border-bottom:1px solid var(--border);padding:10px 14px">
+    {% set parent = breadcrumbs[:-1] %}
+    {% if parent %}
+      <a href="{{ url_for('files', server_id=server.id) }}?path={{ parent[-1].path }}"
+         style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-family:var(--mono);color:var(--accent);text-decoration:none">
+        {{ icon_folder(14) }} ..
+      </a>
+    {% else %}
+      <a href="{{ url_for('files', server_id=server.id) }}"
+         style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-family:var(--mono);color:var(--accent);text-decoration:none">
+        {{ icon_folder(14) }} ..
+      </a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if files %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:36px;padding-left:14px">
+            <input type="checkbox" id="select-all" onchange="toggleAll(this)" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)">
+          </th>
+          <th>Name</th>
+          <th class="hide-mobile">Size</th>
+          <th class="hide-mobile">Modified</th>
+          <th style="text-align:right;padding-right:16px">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in files %}
+        <tr>
+          <td style="padding-left:14px;width:36px">
+            <input type="checkbox" class="file-cb" data-name="{{ f.rel_path }}" onchange="updateSelection()"
+                   style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)">
+          </td>
+          <td>
+            {% if not f.is_file %}
+            <!-- Clickable folder: navigate into it -->
+            <a href="{{ url_for('files', server_id=server.id) }}?path={{ f.rel_path }}"
+               style="display:flex;align-items:center;gap:8px;color:var(--accent);text-decoration:none">
+              {{ icon_folder(15) }}
+              <span style="font-family:var(--mono);font-size:12px;word-break:break-all">{{ f.name }}</span>
+            </a>
+            {% else %}
+            <div style="display:flex;align-items:center;gap:8px;color:var(--text-muted)">
+              {% if f.is_zip %}
+                {{ icon_package(15) }}
+              {% elif f.editable %}
+                {{ icon_file_text(15) }}
+              {% else %}
+                {{ icon_file(15) }}
+              {% endif %}
+              <span style="font-family:var(--mono);font-size:12px;word-break:break-all;color:var(--text)">{{ f.name }}</span>
+            </div>
+            {% endif %}
+          </td>
+          <td class="hide-mobile" style="color:var(--text-muted)">{{ f.size if f.is_file else '—' }}</td>
+          <td class="hide-mobile" style="color:var(--text-muted)">{{ f.mtime }}</td>
+          <td style="text-align:right;padding-right:10px">
+            <div style="display:flex;gap:4px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
+              {% if f.editable %}
+              <a href="{{ url_for('file_edit', server_id=server.id, filename=f.rel_path) }}"
+                 class="btn btn-ghost btn-sm">✏</a>
+              {% endif %}
+              {% if f.is_zip %}
+              <form class="inline-form" method="POST" action="{{ url_for('file_extract', server_id=server.id, filename=f.rel_path) }}">
+                <input type="hidden" name="current_path" value="{{ current_path }}">
+                <button type="submit" class="btn btn-ghost btn-sm" title="Extract" style="display:flex;align-items:center">{{ icon_package(13) }}</button>
+              </form>
+              {% endif %}
+              {% if f.is_file %}
+              <a href="{{ url_for('file_download', server_id=server.id, filename=f.rel_path) }}" class="btn btn-ghost btn-sm">↓</a>
+              {% endif %}
+              <button class="btn btn-ghost btn-sm" onclick="openRename('{{ f.rel_path }}', '{{ f.name }}')">✎</button>
+              <form class="inline-form" method="POST" action="{{ url_for('file_delete', server_id=server.id) }}"
+                    onsubmit="return confirm('Delete {{ f.name }}?')">
+                <input type="hidden" name="filename" value="{{ f.rel_path }}">
+                <input type="hidden" name="current_path" value="{{ current_path }}">
+                <button type="submit" class="btn btn-danger btn-sm">✕</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon" style="display:flex;justify-content:center;color:var(--text-muted)">{{ icon_folder_open(40) }}</div>
+    <h3>No files yet</h3>
+    <p>Upload your bot scripts or drag &amp; drop below.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- New Folder modal -->
+<div id="new-folder-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeNewFolder()">
+  <div class="modal">
+    <div class="modal-header">
+      <span>New Folder</span>
+      <button onclick="closeNewFolder()" class="btn btn-ghost btn-sm">✕</button>
+    </div>
+    <form method="POST" action="{{ url_for('file_mkdir', server_id=server.id) }}">
+      <input type="hidden" name="current_path" value="{{ current_path }}">
+      <div class="form-group">
+        <label>Folder name</label>
+        <input type="text" name="folder_name" id="new-folder-name" required autocomplete="off" placeholder="my-folder">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+        <button type="button" onclick="closeNewFolder()" class="btn btn-ghost">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Rename modal -->
+<div id="rename-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeRename()">
+  <div class="modal">
+    <div class="modal-header">
+      <span>Rename file</span>
+      <button onclick="closeRename()" class="btn btn-ghost btn-sm">✕</button>
+    </div>
+    <form method="POST" action="{{ url_for('file_rename', server_id=server.id) }}">
+      <input type="hidden" name="old_name" id="rename-old">
+      <input type="hidden" name="current_path" value="{{ current_path }}">
+      <div class="form-group">
+        <label>Current name</label>
+        <input type="text" id="rename-display" disabled style="opacity:.5">
+      </div>
+      <div class="form-group">
+        <label>New name</label>
+        <input type="text" name="new_name" id="rename-new" required autocomplete="off">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+        <button type="button" onclick="closeRename()" class="btn btn-ghost">Cancel</button>
+        <button type="submit" class="btn btn-primary">Rename</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openNewFolder() {
+  document.getElementById('new-folder-name').value = '';
+  document.getElementById('new-folder-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('new-folder-name').focus(), 50);
+}
+function closeNewFolder() {
+  document.getElementById('new-folder-modal').style.display = 'none';
+}
+function openRename(relPath, displayName) {
+  document.getElementById('rename-old').value = relPath;
+  document.getElementById('rename-display').value = displayName;
+  document.getElementById('rename-new').value = displayName;
+  document.getElementById('rename-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('rename-new').focus(), 50);
+}
+function closeRename() {
+  document.getElementById('rename-modal').style.display = 'none';
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag-over');
+  const dt = new DataTransfer();
+  for (const file of e.dataTransfer.files) dt.items.add(file);
+  document.getElementById('upload-input').files = dt.files;
+  document.getElementById('upload-form').submit();
+}
+
+function updateSelection() {
+  const cbs     = document.querySelectorAll('.file-cb');
+  const checked = [...cbs].filter(c => c.checked);
+  const btn     = document.getElementById('del-selected-btn');
+  const count   = document.getElementById('sel-count');
+  count.textContent = checked.length;
+  btn.style.display = checked.length ? 'inline-flex' : 'none';
+  document.getElementById('select-all').indeterminate =
+    checked.length > 0 && checked.length < cbs.length;
+  document.getElementById('select-all').checked = checked.length === cbs.length && cbs.length > 0;
+}
+
+function toggleAll(master) {
+  document.querySelectorAll('.file-cb').forEach(cb => cb.checked = master.checked);
+  updateSelection();
+}
+
+function deleteSelected() {
+  const names = [...document.querySelectorAll('.file-cb:checked')].map(c => c.dataset.name);
+  if (!names.length) return;
+  if (!confirm(`Delete ${names.length} file(s)?\n\n${names.join('\n')}`)) return;
+  const container = document.getElementById('bulk-hidden-inputs');
+  container.innerHTML = '';
+  names.forEach(n => {
+    const inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'filenames'; inp.value = n;
+    container.appendChild(inp);
+  });
+  document.getElementById('bulk-delete-form').submit();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,216 @@
+{% from 'icons.html' import icon_bot_type, icon_monitor, icon_zap, icon_diamond %}
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Welcome back, {{ current_user.username }}</h2>
+  <p>Click a server card to open its workspace.</p>
+</div>
+
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-label">Total Servers</div>
+    <div class="stat-value accent">{{ servers|length }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Running</div>
+    <div class="stat-value green">{{ servers|selectattr('status', 'eq', 'running')|list|length }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Slots</div>
+    <div class="stat-value">{{ servers|length }} / {{ '∞' if current_user.is_admin else '1' }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Plan</div>
+    <div class="stat-value" style="font-size:16px;margin-top:8px">
+      {% if current_user.is_admin %}<span style="color:var(--accent)">Admin</span>{% else %}Free{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="section-heading">Your Servers</div>
+
+{% if servers %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+  {% for server in servers %}
+  <div class="srv-card"
+       onclick="goConsole(event, '{{ url_for('server_console', server_id=server.id) }}')"
+       style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .15s,transform .1s"
+       onmouseover="this.style.borderColor='var(--accent)';this.style.transform='translateY(-1px)'"
+       onmouseout="this.style.borderColor='var(--border)';this.style.transform=''">
+
+    <!-- Main info -->
+    <div style="padding:18px 18px 14px;display:flex;align-items:flex-start;gap:14px">
+      <div style="width:40px;height:40px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted)">
+        {{ icon_bot_type(server.bot_type, 20) }}
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          {{ server.name }}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap">
+          <span class="badge {{ 'badge-running' if server.status == 'running' else 'badge-stopped' }}">
+            {{ '● running' if server.status == 'running' else '○ stopped' }}
+          </span>
+          {% if server.entry_file %}
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text-muted)">{{ server.entry_file }}</span>
+          {% endif %}
+        </div>
+        {% if server.description %}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ server.description }}</div>
+        {% endif %}
+      </div>
+
+      <!-- Start/Stop button -->
+      <form class="inline-form" method="POST" action="{{ url_for('server_toggle', server_id=server.id) }}" style="flex-shrink:0">
+        <input type="hidden" name="next" value="{{ url_for('server_console', server_id=server.id) }}">
+        {% if server.status == 'running' %}
+          <button type="submit" class="btn btn-danger btn-sm" title="Stop" onclick="event.stopPropagation()">■</button>
+        {% else %}
+          <button type="submit" class="btn btn-success btn-sm" title="Start" onclick="event.stopPropagation()">▶</button>
+        {% endif %}
+      </form>
+    </div>
+
+    <!-- Disk + resource bars -->
+    <div style="padding:0 18px 16px;display:flex;flex-direction:column;gap:7px">
+      {% set disk_used = server.disk_used_mb %}
+      {% set disk_limit = current_user.disk_limit if not current_user.is_admin else 1000 %}
+      {% set pct = [disk_used / disk_limit * 100, 100] | min if disk_limit else 0 %}
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-bottom:3px">
+          <span>Disk</span>
+          <span style="font-family:var(--mono)">{{ disk_used }} MB{% if not current_user.is_admin %} / {{ disk_limit }} MB{% endif %}</span>
+        </div>
+        <div style="height:3px;background:var(--border);border-radius:2px;overflow:hidden">
+          <div style="height:100%;width:{{ pct | round }}%;background:{% if pct > 85 %}var(--red){% elif pct > 60 %}var(--yellow){% else %}var(--accent){% endif %};border-radius:2px;transition:width .3s"></div>
+        </div>
+      </div>
+      {% if server.status == 'running' %}
+      <div id="res-{{ server.id }}">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-bottom:3px">
+          <span>CPU</span>
+          <span id="cpu-val-{{ server.id }}" style="font-family:var(--mono)">…</span>
+        </div>
+        <div style="height:3px;background:var(--border);border-radius:2px;overflow:hidden">
+          <div id="cpu-bar-{{ server.id }}" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width .6s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-bottom:3px;margin-top:6px">
+          <span>RAM</span>
+          <span id="ram-val-{{ server.id }}" style="font-family:var(--mono)">…</span>
+        </div>
+        <div style="height:3px;background:var(--border);border-radius:2px;overflow:hidden">
+          <div id="ram-bar-{{ server.id }}" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width .6s"></div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Open workspace label -->
+    <div style="padding:10px 18px;border-top:1px solid var(--border);background:var(--surface2);font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px">
+      {{ icon_monitor(12) }} Click to open workspace →
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">◈</div>
+    <h3>No servers yet</h3>
+    <p>Your free server slot will be created on registration. Contact an admin if missing.</p>
+  </div>
+</div>
+{% endif %}
+
+<!-- Free plan notice + Contact Admin -->
+{% if not current_user.is_admin %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px">
+
+  <!-- Free plan card -->
+  <div class="card" style="border-color:#2a2510;margin-bottom:0">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:13px;font-weight:600;color:var(--yellow);display:flex;align-items:center;gap:6px">
+        {{ icon_zap(14) }} Free Plan
+      </div>
+      <div style="font-size:12px;color:var(--text-muted)">1 server · 512 MB disk · 256 MB RAM · 10% CPU</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+        Want more power? Contact admin to upgrade your limits.
+      </div>
+    </div>
+  </div>
+
+  <!-- Contact admin card -->
+  <div class="card" style="border-color:#1a2e4a;margin-bottom:0;background:linear-gradient(135deg,#0f1a2e 0%,#161616 100%)">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:13px;font-weight:600;color:var(--accent);display:flex;align-items:center;gap:6px">
+        {{ icon_diamond(14) }} Need More Resources?
+      </div>
+      <div style="font-size:12px;color:var(--text-muted)">More server slots, higher RAM/CPU limits, priority support.</div>
+      <a href="https://t.me/freek311" target="_blank" rel="noopener"
+         onclick="event.stopPropagation()"
+         style="display:inline-flex;align-items:center;gap:6px;margin-top:4px;padding:7px 14px;background:#0088cc;color:#fff;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;width:fit-content">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.012 9.483c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L6.26 14.4l-2.95-.924c-.64-.204-.653-.64.136-.948l11.526-4.446c.537-.194 1.006.131.59.166z"/></svg>
+        Contact @freek311
+      </a>
+    </div>
+  </div>
+
+</div>
+{% endif %}
+
+<script>
+function goConsole(event, url) {
+  if (event.target.closest('button, input[type=submit], a, form')) return;
+  window.location.href = url;
+}
+
+// Poll resource usage for each running server card
+const ramLimits = {
+  {% for server in servers %}
+  {% if server.status == 'running' %}
+  {{ server.id }}: {{ current_user.ram_limit if not current_user.is_admin else 512 }},
+  {% endif %}
+  {% endfor %}
+};
+
+async function pollResources(serverId) {
+  try {
+    const r = await fetch(`/server/${serverId}/resources`);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.status !== 'running') return;
+
+    const cpuVal = document.getElementById(`cpu-val-${serverId}`);
+    const cpuBar = document.getElementById(`cpu-bar-${serverId}`);
+    const ramVal = document.getElementById(`ram-val-${serverId}`);
+    const ramBar = document.getElementById(`ram-bar-${serverId}`);
+    if (!cpuVal) return;
+
+    const cpuPct = Math.min(d.cpu, 100);
+    cpuVal.textContent = `${d.cpu}%`;
+    cpuBar.style.width = `${cpuPct}%`;
+    cpuBar.style.background = cpuPct > 80 ? 'var(--red)' : cpuPct > 50 ? 'var(--yellow)' : 'var(--accent)';
+
+    const ramLimit = ramLimits[serverId] || 256;
+    const ramPct = Math.min(d.ram_mb / ramLimit * 100, 100);
+    ramVal.textContent = `${d.ram_mb} MB`;
+    ramBar.style.width = `${ramPct}%`;
+    ramBar.style.background = ramPct > 80 ? 'var(--red)' : ramPct > 60 ? 'var(--yellow)' : 'var(--accent)';
+  } catch (_) {}
+}
+
+// Kick off polling for every running server
+(function() {
+  {% for server in servers %}
+  {% if server.status == 'running' %}
+  pollResources({{ server.id }});
+  setInterval(() => pollResources({{ server.id }}), 4000);
+  {% endif %}
+  {% endfor %}
+})();
+</script>
+{% endblock %}

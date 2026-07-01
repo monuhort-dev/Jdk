@@ -1,0 +1,122 @@
+{% from 'icons.html' import icon_zap, icon_monitor, icon_folder_open, icon_settings, icon_bot_type %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}BotHost{% endblock %} — BotHost</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div style="display:flex;align-items:center;gap:8px">
+        {{ icon_zap(16) }}
+        <div>
+          <h1>BotHost</h1>
+          <span>Bot Hosting Panel</span>
+        </div>
+      </div>
+      <button class="sidebar-close" onclick="closeSidebar()" aria-label="Close">✕</button>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">Main</div>
+      <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">
+        <span class="icon">▦</span> Dashboard
+      </a>
+      <a href="{{ url_for('servers') }}" class="{{ 'active' if request.endpoint == 'servers' }}">
+        <span class="icon">◈</span> My Servers
+      </a>
+
+      {% if current_user.servers %}
+      <div class="nav-section">Your Bots</div>
+      {% for s in current_user.servers %}
+      <a href="{{ url_for('server_config', server_id=s.id) }}"
+         class="{{ 'active' if request.endpoint == 'server_config' and request.view_args.get('server_id') == s.id }}"
+         style="font-size:12px;padding:6px 20px;font-weight:600;display:flex;align-items:center;gap:6px">
+        {{ icon_bot_type(s.bot_type, 12) }} {{ s.name }}
+      </a>
+      <a href="{{ url_for('files', server_id=s.id) }}"
+         class="{{ 'active' if request.endpoint in ['files','file_edit'] and request.view_args.get('server_id') == s.id }}"
+         style="font-size:11px;padding:5px 20px 5px 36px;color:#666;display:flex;align-items:center;gap:5px">
+        {{ icon_folder_open(11) }} Files
+      </a>
+      <a href="{{ url_for('server_console', server_id=s.id) }}"
+         class="{{ 'active' if request.endpoint in ['server_console','server_logs'] and request.view_args.get('server_id') == s.id }}"
+         style="font-size:11px;padding:5px 20px 5px 36px;color:#666;display:flex;align-items:center;gap:5px">
+        {{ icon_monitor(11) }} Console
+      </a>
+      {% endfor %}
+      {% endif %}
+
+      {% if current_user.is_admin %}
+      <div class="nav-section">Admin</div>
+      <a href="{{ url_for('admin_index') }}" class="{{ 'active' if request.endpoint == 'admin_index' }}">
+        <span class="icon">◉</span> Overview
+      </a>
+      <a href="{{ url_for('admin_users') }}" class="{{ 'active' if request.endpoint == 'admin_users' }}">
+        <span class="icon">◎</span> Users
+      </a>
+      <a href="{{ url_for('admin_servers') }}" class="{{ 'active' if request.endpoint == 'admin_servers' }}">
+        <span class="icon">◈</span> All Servers
+      </a>
+      {% endif %}
+    </nav>
+    <div class="sidebar-footer">
+      <div style="margin-bottom:6px;font-weight:500">{{ current_user.username }}</div>
+      <a href="{{ url_for('logout') }}" style="display:block;margin-bottom:10px">Sign out →</a>
+      <a href="https://t.me/freek311" target="_blank" rel="noopener"
+         style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:#0088cc;color:#fff;border-radius:5px;font-size:11px;font-weight:600;text-decoration:none;width:100%;justify-content:center">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.012 9.483c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L6.26 14.4l-2.95-.924c-.64-.204-.653-.64.136-.948l11.526-4.446c.537-.194 1.006.131.59.166z"/></svg>
+        Contact Admin
+      </a>
+    </div>
+  </aside>
+
+  <!-- Mobile sidebar overlay -->
+  <div class="sidebar-overlay" id="sb-overlay" onclick="closeSidebar()"></div>
+
+  <div class="main">
+    <div class="topbar">
+      <button class="hamburger" onclick="openSidebar()" aria-label="Menu">☰</button>
+      <div class="topbar-title">{% block page_title %}{% endblock %}</div>
+      <div class="topbar-right">
+        {% if current_user.is_admin %}
+          <span class="badge badge-admin">admin</span>
+        {% else %}
+          <span class="badge badge-free">free</span>
+        {% endif %}
+        <span class="user-badge">{{ current_user.email }}</span>
+      </div>
+    </div>
+
+    <div class="content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ 'error' if category == 'error' else 'success' if category == 'success' else 'info' }}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</div>
+<script>
+function openSidebar() {
+  document.querySelector('.sidebar').classList.add('open');
+  document.getElementById('sb-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeSidebar() {
+  document.querySelector('.sidebar').classList.remove('open');
+  document.getElementById('sb-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+</script>
+</body>
+</html>

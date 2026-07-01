@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Logs — {{ server.name }}{% endblock %}
+{% block page_title %}Logs — {{ server.name }}{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+  <div>
+    <h2 style="font-size:18px;font-weight:700">{{ server.name }}</h2>
+    <p style="font-size:13px;color:var(--text-muted);margin-top:2px">Server activity log · {{ log_lines|length }} line(s)</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="{{ url_for('files', server_id=server.id) }}" class="btn btn-ghost btn-sm">📂 Files</a>
+    <button onclick="toggleAutoRefresh()" id="refresh-btn" class="btn btn-ghost btn-sm">⟳ Auto-refresh: OFF</button>
+    <form class="inline-form" method="POST" action="{{ url_for('log_clear', server_id=server.id) }}"
+          onsubmit="return confirm('Clear all logs for {{ server.name }}?')">
+      <button type="submit" class="btn btn-danger btn-sm">🗑 Clear</button>
+    </form>
+  </div>
+</div>
+
+<!-- Status strip -->
+<div class="limits-strip" style="margin-bottom:16px">
+  <div class="limit-item">
+    <span class="limit-label">Status</span>
+    <span class="limit-val">
+      <span class="{{ 'badge-running' if server.status == 'running' else 'badge-stopped' }}" style="color:{{ 'var(--green)' if server.status == 'running' else '#666' }}">
+        {{ '● Running' if server.status == 'running' else '● Stopped' }}
+      </span>
+    </span>
+  </div>
+  <div class="limit-item">
+    <span class="limit-label">Type</span>
+    <span class="limit-val">{{ '🐍 Python' if server.bot_type == 'python' else '⚡ JS' }}</span>
+  </div>
+  <div class="limit-item">
+    <span class="limit-label">Entry</span>
+    <span class="limit-val">{{ server.entry_file or '—' }}</span>
+  </div>
+  <div class="limit-item">
+    <span class="limit-label">Log entries</span>
+    <span class="limit-val">{{ log_lines|length }}</span>
+  </div>
+</div>
+
+<!-- Log terminal -->
+<div class="editor-wrap">
+  <div class="editor-toolbar" style="justify-content:space-between">
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block"></span>
+      <span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block"></span>
+      <span style="width:10px;height:10px;border-radius:50%;background:#22c55e;display:inline-block"></span>
+      <span style="margin-left:8px;font-size:12px;color:var(--text-muted);font-family:var(--mono)">{{ server.name }}/bothost.log</span>
+    </div>
+    <span id="refresh-indicator" style="font-size:11px;color:var(--text-muted)"></span>
+  </div>
+  <div id="log-output" style="padding:16px;font-family:var(--mono);font-size:12px;line-height:1.8;background:#0a0a0a;min-height:420px;max-height:600px;overflow-y:auto">
+    {% if log_lines %}
+      {% for line in log_lines %}
+        <div class="log-line {% if '[START]' in line %}log-start{% elif '[STOP]' in line %}log-stop{% elif '[UPLOAD]' in line %}log-upload{% elif '[ERROR]' in line %}log-error{% elif '[CONFIG]' in line %}log-config{% else %}log-default{% endif %}">{{ line }}</div>
+      {% endfor %}
+    {% else %}
+      <div style="color:#444;padding:20px 0;text-align:center">No log entries yet. Start or stop the server to generate logs.</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if current_user.is_admin %}
+<!-- Admin: inject custom log entry -->
+<div class="card" style="margin-top:12px">
+  <div class="card-header">
+    <div class="card-title">Inject Log Entry <span style="font-size:11px;font-weight:400;color:var(--text-muted)">(admin only)</span></div>
+  </div>
+  <form method="POST" action="{{ url_for('log_inject', server_id=server.id) }}" style="display:flex;gap:8px">
+    <select name="event" style="width:110px;padding:7px 8px;font-size:12px;font-family:var(--mono);background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);outline:none">
+      <option>INFO</option>
+      <option>WARN</option>
+      <option>ERROR</option>
+      <option>DEBUG</option>
+    </select>
+    <input type="text" name="message" placeholder="Log message..." required
+           style="flex:1;padding:7px 10px;font-size:13px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);outline:none;font-family:var(--mono)">
+    <button type="submit" class="btn btn-primary btn-sm">Inject</button>
+  </form>
+</div>
+{% endif %}
+
+<style>
+.log-line { padding:1px 0; color:#d4d4d4; white-space:pre-wrap; word-break:break-all; }
+.log-start  { color:#22c55e; }
+.log-stop   { color:#f87171; }
+.log-upload { color:#60a5fa; }
+.log-error  { color:#f87171; font-weight:600; }
+.log-config { color:#c084fc; }
+.log-default { color:#9ca3af; }
+</style>
+
+<script>
+// Scroll to bottom on load
+const log = document.getElementById('log-output');
+log.scrollTop = log.scrollHeight;
+
+// Auto-refresh
+let refreshInterval = null;
+let refreshOn = false;
+let countdown = 5;
+
+function toggleAutoRefresh() {
+  refreshOn = !refreshOn;
+  const btn = document.getElementById('refresh-btn');
+  const indicator = document.getElementById('refresh-indicator');
+  if (refreshOn) {
+    btn.textContent = '⟳ Auto-refresh: ON';
+    btn.style.color = 'var(--green)';
+    countdown = 5;
+    indicator.textContent = `Refreshing in ${countdown}s`;
+    refreshInterval = setInterval(() => {
+      countdown--;
+      if (countdown <= 0) {
+        window.location.reload();
+      } else {
+        indicator.textContent = `Refreshing in ${countdown}s`;
+      }
+    }, 1000);
+  } else {
+    clearInterval(refreshInterval);
+    btn.textContent = '⟳ Auto-refresh: OFF';
+    btn.style.color = '';
+    indicator.textContent = '';
+  }
+}
+</script>
+{% endblock %}

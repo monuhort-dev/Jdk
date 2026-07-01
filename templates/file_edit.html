@@ -1,0 +1,77 @@
+{% from 'icons.html' import icon_save %}
+{% extends "base.html" %}
+{% block title %}Edit {{ filename }}{% endblock %}
+{% block page_title %}Edit — {{ filename }}{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+  <div>
+    <div style="font-size:13px;color:var(--text-muted)">
+      <a href="{{ url_for('files', server_id=server.id) }}" style="color:var(--text-muted)">{{ server.name }}</a>
+      <span style="margin:0 6px">/</span>
+      <span style="font-family:var(--mono);color:var(--text)">{{ filename }}</span>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="{{ url_for('files', server_id=server.id) }}" class="btn btn-ghost btn-sm">← Files</a>
+    <button form="edit-form" type="submit" class="btn btn-primary btn-sm" style="display:flex;align-items:center;gap:5px">
+      {{ icon_save(13) }} Save
+    </button>
+  </div>
+</div>
+
+<form id="edit-form" method="POST">
+  <div class="editor-wrap">
+    <div class="editor-toolbar">
+      <span class="badge badge-type" style="font-family:var(--mono)">{{ filename }}</span>
+      <span class="badge badge-type">{{ lang }}</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">Ctrl+S to save</span>
+    </div>
+    <div style="position:relative">
+      <div id="line-numbers" class="line-numbers"></div>
+      <textarea id="code-editor" name="content" class="code-editor" spellcheck="false"
+                oninput="syncLines()" onscroll="syncScroll()">{{ content }}</textarea>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;margin-top:12px;gap:8px">
+    <a href="{{ url_for('files', server_id=server.id) }}" class="btn btn-ghost">Cancel</a>
+    <button type="submit" class="btn btn-primary" style="display:flex;align-items:center;gap:5px">
+      {{ icon_save(13) }} Save changes
+    </button>
+  </div>
+</form>
+
+<script>
+const editor = document.getElementById('code-editor');
+const lineNums = document.getElementById('line-numbers');
+
+function syncLines() {
+  const lines = editor.value.split('\n').length;
+  lineNums.innerHTML = Array.from({length: lines}, (_, i) => `<span>${i+1}</span>`).join('');
+}
+
+function syncScroll() {
+  lineNums.scrollTop = editor.scrollTop;
+}
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    document.getElementById('edit-form').submit();
+  }
+});
+
+editor.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = editor.selectionStart;
+    const end = editor.selectionEnd;
+    editor.value = editor.value.substring(0, s) + '    ' + editor.value.substring(end);
+    editor.selectionStart = editor.selectionEnd = s + 4;
+    syncLines();
+  }
+});
+
+syncLines();
+</script>
+{% endblock %}
